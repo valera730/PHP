@@ -9,15 +9,18 @@ use Bitrix\Main\Type\DateTime;
 use Bitrix\Highloadblock as HL;
 use Bitrix\Main\Entity;
 use Bitrix\Main\Application;
-use Lkduslar\Core\Rest\Yadisk;
-use Lkduslar\Core\Wsdl1c;
-use Lkduslar\Core\Main;
 use Bitrix\Highloadblock\HighloadBlockTable;
 
 EventManager::getInstance()->addEventHandler('', 'KitchenFillingFilterOnBeforeUpdate', 'FilterOnBeforeAddUpdate');
 EventManager::getInstance()->addEventHandler('', 'KitchenFillingFilterOnBeforeAdd', 'FilterOnBeforeAddUpdate');
 EventManager::getInstance()->addEventHandler('', 'CabinetFillingFilterOnBeforeUpdate', 'FilterOnBeforeAddUpdate');
 EventManager::getInstance()->addEventHandler('', 'CabinetFillingFilterOnBeforeAdd', 'FilterOnBeforeAddUpdate');
+
+EventManager::getInstance()->addEventHandler(
+    '',
+    'PartneryNaSaytOnBeforeAdd',
+    'OnBeforeAdd'
+);
 
 function FilterOnBeforeAddUpdate(\Bitrix\Main\Entity\Event $event) {
     $arFields = $event->getParameter('fields');
@@ -72,6 +75,18 @@ function FilterOnBeforeAddUpdate(\Bitrix\Main\Entity\Event $event) {
     $event->setParameter("fields", $arFields);
 
     $result->modifyFields($arFields);
+
+    return $result;
+}
+
+function OnBeforeAdd(\Bitrix\Main\Entity\Event $event) {
+    $entity = $event->getEntity();
+    $arFields = $event->getParameter("fields");
+    $result = new \Bitrix\Main\Entity\EventResult();
+    if (empty($arFields['UF_DATE'])) {
+        $arFields['UF_DATE'] = new \Bitrix\Main\Type\DateTime();
+        $result->modifyFields($arFields);
+    }
 
     return $result;
 }
