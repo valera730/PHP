@@ -34,6 +34,12 @@ EventManager::getInstance()->addEventHandler(
     'OnAfterIBlockElementAddHandler'
 );
 
+EventManager::getInstance()->addEventHandler(
+    "iblock",
+    "OnAfterIBlockElementAdd",
+    "ResizeElementProperty"
+);
+
 function FilterOnBeforeAddUpdate(\Bitrix\Main\Entity\Event $event) {
     $arFields = $event->getParameter('fields');
 
@@ -262,5 +268,63 @@ function OnAfterIBlockElementAddHandler(&$arFields) {
         if ($ob = $res->GetNext()) {
             \Local\B24\B24Helper::ClaimsUpdateHandler($ob, true);
         }
+    }
+}
+
+function ResizeElementProperty(&$arFields) {
+    if ($arFields['IBLOCK_ID'] == 45 && $arFields['ID']) {
+        $arProp = [];
+        $PROPERTY_CODES = ["FILES", "PHOTO_1", "PHOTO_2", "PHOTO_3", "PHOTO_4", "PHOTO_5", "PHOTO_6"];
+        $imageMaxWidth = 2048;
+        $imageMaxHeight = 2048;
+        foreach ($PROPERTY_CODES as $PROPERTY_CODE) {
+            $arProp = [];
+            $dbRes = CIBlockElement::GetProperty($arFields["IBLOCK_ID"], $arFields["ID"], "sort", "asc",
+                ["CODE" => $PROPERTY_CODE]);
+            while ($arMorePhoto = $dbRes->GetNext(true, false)) {
+                $arFile = CFile::GetFileArray($arMorePhoto["VALUE"]);
+                if (!CFile::IsImage($arFile["ORIGINAL_NAME"])) {
+                    continue;
+                }
+                if ($arFile["WIDTH"] > $imageMaxWidth || $arFile["HEIGHT"] > $imageMaxHeight) {
+                    $tmpFilePath = $_SERVER['DOCUMENT_ROOT'] . "/upload/tmp/" . $arFile["ORIGINAL_NAME"];
+                    if (!file_exists($tmpFilePath)) {
+                        continue;
+                    }
+
+                    $resizeRez = CFile::ResizeImageFile(
+                        $_SERVER['DOCUMENT_ROOT'] . $arFile["SRC"],
+                        $tmpFilePath,
+                        ['width' => $imageMaxWidth, 'height' => $imageMaxHeight],
+                        BX_RESIZE_IMAGE_PROPORTIONAL,
+                        [],
+                        95
+                    );
+                    if ($resizeRez) {
+                        if ($PROPERTY_CODE == 'FILES') {
+                            $arProp += [
+                                $arMorePhoto["PROPERTY_VALUE_ID"] => [
+                                    "VALUE" => CFile::MakeFileArray($tmpFilePath),
+                                    "DESCRIPTION" => $arMorePhoto["DESCRIPTION"]
+                                ]
+                            ];
+                        } else {
+                            $arProp = CFile::MakeFileArray($tmpFilePath);
+                        }
+                    }
+                }
+            }
+            if (!empty($arProp)) {
+                CIBlockElement::SetPropertyValueCode($arFields["ID"], $PROPERTY_CODE, $arProp);
+            }
+        }
+
+        $_WFILE = glob($_SERVER['DOCUMENT_ROOT'] . "/upload/tmp/*.*");
+        
+        foreach ($_WFILE as $_file) {
+            unlink($_file);
+        }
+
+        DeleteDirFilesEx('/upload/claims/files/');
     }
 }
