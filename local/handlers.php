@@ -22,6 +22,12 @@ EventManager::getInstance()->addEventHandler(
     'OnBeforeAdd'
 );
 
+EventManager::getInstance()->addEventHandler(
+    'sale',
+    'OnSaleOrderSaved',
+    'updateUserAddresses'
+);
+
 function FilterOnBeforeAddUpdate(\Bitrix\Main\Entity\Event $event) {
     $arFields = $event->getParameter('fields');
 
@@ -89,4 +95,124 @@ function OnBeforeAdd(\Bitrix\Main\Entity\Event $event) {
     }
 
     return $result;
+}
+
+function updateUserAddresses(\Bitrix\Main\Event $event) {
+    global $USER, $APPLICATION;
+
+    $userId = $USER->GetId();
+
+    CModule::IncludeModule('highloadblock');
+
+    $order = $event->getParameter("ENTITY");
+    $order_id = $order->getId();
+    $props = $order->getPropertyCollection();
+
+    $addressId = $_REQUEST["ADDRESS_ID"];
+
+    $arAddressFields = [];
+
+    if( isset($_REQUEST['DADATA_VALUE']) && is_string($_REQUEST['DADATA_VALUE']) && is_array( json_decode($_REQUEST['DADATA_VALUE'], true) ) ) {
+        $arAddressFields['UF_DADATA'] = $_REQUEST['DADATA_VALUE'];
+    } else {
+        $arAddressFields['UF_DADATA'] = false;
+    }
+
+    foreach ($props as $prop) :
+        $code = $prop->getField("CODE");
+        $value = $prop->getValue();
+
+        switch ($code) :
+            case 'CONTACT_PERSON':
+                $fio = trim($value);
+                break;
+            case 'EMAIL':
+                $email = trim($value);
+                break;
+            case 'PHONE':
+                $phone = trim($value);
+                break;
+            case 'COMPANY':
+                $company = trim($value);
+                break;
+            case 'ADDRESS':
+                $address = trim($value);
+                break;
+            case 'D_CITY':
+                $arAddressFields['UF_CITY'] = trim($value);
+                break;
+            case 'D_STREET':
+                $arAddressFields['UF_STREET'] = trim($value);
+                break;
+            case 'D_HOUSE':
+                $arAddressFields['UF_HOUSE'] = trim($value);
+                break;
+            case 'FLAT':
+                $arAddressFields['UF_FLAT'] = trim($value);
+                break;
+            case 'ENTRANCE':
+                $arAddressFields['UF_ENTRANCE'] = trim($value);
+                break;
+            case 'INTERCOM_CODE':
+                $arAddressFields['UF_INTERCOM_CODE'] = trim($value);
+                break;
+        endswitch;
+    endforeach;
+
+    $hldata = HL\HighloadBlockTable::getList(['filter' => ['TABLE_NAME' => 'user_addresses']])->fetch();
+    $entityClass = HL\HighloadBlockTable::compileEntity($hldata)->getDataClass();
+    $data = [
+        "UF_ADDRESS"=>$address,
+        "UF_DATE"=>date("d.m.Y H:i:s")
+    ];
+    if(!empty($arAddressFields)) {
+        $data = array_merge($data, $arAddressFields);
+    }
+
+    if($addressId == "new"){
+        $rsData = $entityClass::getList([
+            "select" => ["ID"],
+            "filter" => ["UF_USER_ID"=>$userId, "UF_FIO"=>$fio, "UF_EMAIL"=>$email, "UF_PHONE"=>$phone, "UF_ADDRESS"=>$address]
+        ]);
+        if (!$rsData->Fetch()) {
+            $data["UF_USER_ID"] = $userId;
+
+            $result = $entityClass::add($data);
+        }
+    } elseif((int)$addressId > 0) {
+        $rsData = $entityClass::getList([
+            "select" => ["UF_USER_ID","ID","UF_ADDRESS"],
+            "filter" => ["ID"=>$addressId,"UF_USER_ID"=>$userId]
+        ]);
+        if($arData = $rsData->Fetch()){
+            $arData["UF_ADDRESS"]=trim($arData["UF_ADDRESS"]);
+            $result = $entityClass::update($addressId, $data);
+            if ($address != $arData["UF_ADDRESS"]) {
+                $arEventFields["CLIENT_NAME"]=$fio." (ID: ".$userId.")";
+                $arEventFields["ORDER_ID"]=$order_id;
+                $arEventFields["CLIENT_INFO"]="Старый адрес доставки: ".$arData["UF_ADDRESS"]."<br>";
+                $arEventFields["CLIENT_INFO"].="<font color='red'>Новый адрес доставки: ".$address."</font><br>";
+                CEvent::Send("SALE_ADDRESS_CHANGE", ['s1'], $arEventFields);
+            }
+        }
+    }
+
+    if ($phone && $APPLICATION->GetCurUri() == "/personal/cart/order/" && $_REQUEST["action"] == "saveOrderAjax") {
+        $rsUsers = Bitrix\Main\UserTable::GetList([
+            'filter' => [
+                '=ACTIVE' => 'Y',
+                '=ID' => $userId,
+            ],
+            'select' => ['ID','PERSONAL_MOBILE'],
+        ]);
+        if ($arUser = $rsUsers->Fetch()) {
+            if(!trim($arUser['PERSONAL_MOBILE'])) {
+                $user = new CUser;
+                $fields = [
+                    "PERSONAL_MOBILE"   => $phone,
+                ];
+                $user->Update($userId, $fields);
+            }
+        }
+    }
 }
