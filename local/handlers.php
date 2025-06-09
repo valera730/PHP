@@ -28,6 +28,12 @@ EventManager::getInstance()->addEventHandler(
     'updateUserAddresses'
 );
 
+EventManager::getInstance()->addEventHandler(
+    'iblock',
+    'OnAfterIBlockElementAdd',
+    'OnAfterIBlockElementAddHandler'
+);
+
 function FilterOnBeforeAddUpdate(\Bitrix\Main\Entity\Event $event) {
     $arFields = $event->getParameter('fields');
 
@@ -213,6 +219,48 @@ function updateUserAddresses(\Bitrix\Main\Event $event) {
                 ];
                 $user->Update($userId, $fields);
             }
+        }
+    }
+}
+
+function OnAfterIBlockElementAddHandler(&$arFields) {
+    if ($arFields['IBLOCK_ID'] == 45 && $arFields['ID']) {
+        $arSelect = [
+            "ID",
+            "IBLOCK_ID",
+            "NAME",
+            "PREVIEW_TEXT",
+            "PROPERTY_DATE",
+            "PROPERTY_PROFILE",
+            "PROPERTY_ADDRESS",
+            "PROPERTY_FIO",
+            "PROPERTY_POSITION",
+            "PROPERTY_PHONE",
+            "PROPERTY_EMAIL",
+            "PROPERTY_GOODS",
+            "PROPERTY_ART_NUM",
+            "PROPERTY_QUANTITY",
+            "PROPERTY_FIO_CONT",
+            "PROPERTY_POSITION_CONT",
+            "PROPERTY_ORDER",
+            "PROPERTY_STATUS",
+            "PROPERTY_GOODS_VIEW",
+            "PROPERTY_DOCS",
+
+            "CREATED_BY",
+            "PROPERTY_STATUS_1C",
+            "PROPERTY_ORDER_NUM",
+            "PROPERTY_ORDER_NUM_1C",
+            "PROPERTY_RESULT_1C",
+            "PROPERTY_REASON_1C",
+            "PROPERTY_STATUS_PROVIDER_1C",
+        ];
+
+        $arFilter = ["IBLOCK_ID" => $arFields['IBLOCK_ID'], "ID" => $arFields['ID']];
+        $res = CIBlockElement::GetList([], $arFilter, false, false, $arSelect);
+
+        if ($ob = $res->GetNext()) {
+            \Local\B24\B24Helper::ClaimsUpdateHandler($ob, true);
         }
     }
 }
